@@ -1,0 +1,133 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+### Load libraries
+```{r}
+library(xml2)
+library(rvest)
+library(stringr)
+library(tidyverse)
+library(stringr)
+library(readxl)
+library(writexl)
+library(ggplot2)
+```
+
+### Get data with webscraping
+```{r}
+new_urls <- "https://neoauto.com/venta-de-autos-usados?page=%s"
+
+marca_modelo <- NULL
+caracteristicas <- NULL
+precio <- NULL
+id <- NULL
+
+l1 <- NULL
+l2 <- NULL
+l3 <- NULL
+l4 <- NULL
+
+i <- 1
+while (i < 400){
+  new_webpage <- read_html(sprintf(new_urls, i))
+  l1 <- as.data.frame(html_nodes(new_webpage, ".c-results-used__header") %>% html_text())
+  l2 <- as.data.frame(html_nodes(new_webpage, ".c-results-used__details") %>% html_text())
+  l3 <- as.data.frame(html_nodes(new_webpage, ".c-results-used__price--black") %>% html_text())
+  marca_modelo <- rbind(marca_modelo,l1)
+  caracteristicas <- rbind(caracteristicas, l2)
+  precio <- rbind(precio, l3)
+  i = i+1
+}
+```
+
+### Clean data
+```{r}
+#Sacar marca de marca_modelo
+marca <- word(marca_modelo$`html_nodes(new_webpage, ".c-results-used__header") %>% html_text()`, 1)
+
+#Sacar anio de marca_modelo
+anio <- word(marca_modelo$`html_nodes(new_webpage, ".c-results-used__header") %>% html_text()`, -1)
+
+#Sacar modelo de marca_modelo
+modelo <- word(marca_modelo$`html_nodes(new_webpage, ".c-results-used__header") %>% html_text()`, start = 2, end = -2)
+
+#Limpiar caracteristicas
+caracteristicas_limpia <- caracteristicas[1:nrow(caracteristicas)%%2!=0,]
+
+#Separar caracteristicas en varias columnas
+matriz_caracteristicas <- as.data.frame(str_split_fixed(caracteristicas_limpia,"\\s",6))
+matriz_caracteristicas$V2 <- as.numeric(gsub(",", "", matriz_caracteristicas$V2))
+matriz_caracteristicas$V3 <- as.numeric(gsub(",", "", matriz_caracteristicas$V3))
+matriz_caracteristicas$V4 <- as.numeric(gsub(",", "", matriz_caracteristicas$V4))
+matriz_caracteristicas$V5 <- as.numeric(gsub(",", "", matriz_caracteristicas$V5))
+
+#Sacar kilometraje
+kilometraje <- rowSums(cbind(matriz_caracteristicas$V2,matriz_caracteristicas$V3,matriz_caracteristicas$V4,matriz_caracteristicas$V5), na.rm = TRUE)
+  
+
+#Juntar variables
+df_transitoria <- cbind("Marca" = marca, "Modelo" = modelo, "Anio" = anio, "Precio" = unlist(precio), "Kilometraje" = kilometraje)
+df_transitoria <- as.data.frame(df_transitoria)
+
+#Limpiar columna precio
+df_transitoria$Precio <- word(df_transitoria$Precio, 2,2)
+df_transitoria$Precio <- gsub(",", "", df_transitoria$Precio)
+
+#Cambiar tipo de variable según corresponda
+df_transitoria$Precio <- as.numeric(df_transitoria$Precio)
+df_transitoria$Anio <- as.numeric(df_transitoria$Anio)
+df_transitoria$Kilometraje <- as.numeric(df_transitoria$Kilometraje)
+```
+
+### Export brands and models for name standarization
+```{r}
+disponibilidad <- df_transitoria %>% group_by(Marca, Modelo)
+write_xlsx(disponibilidad,"C:\\Users\\Mauricio\\Documents\\Projects\\Neoauto\\Equivalencias.xlsx")
+```
+
+### Import renamed brands and models
+```{r}
+marcas_final <- read_excel("Base final.xlsx", sheet = "marcas")
+modelos_final <- read_excel("Base final.xlsx", sheet = "modelo")
+```
+
+### Create clean dataset
+```{r}
+base_final <- left_join(df_transitoria, marcas_final)
+base_final <- left_join(base_final, modelos_final, by=c('Marca'='Marca','Modelo'='Modelo'))
+base_final <- base_final %>% select(Marca_final, Modelo_final, Anio, Kilometraje, Precio)
+```
+
+### Define most commons brands and models for regressions
+```{r}
+cantidad_modelo <- base_final %>% filter(Precio > 0, Kilometraje > 0) %>% group_by(Marca_final, Modelo_final) %>% count() %>% arrange(desc(n))
+modelos_finales <- cantidad_modelo %>% filter(n >= 30) %>% mutate(Modelo_unico = paste(Marca_final, Modelo_final))
+base_final <- base_final %>% mutate(Modelo_unico = paste(Marca_final, Modelo_final))
+```
+
+### Run regressions
+```{r}
+lista_regresiones <- NULL
+
+for (i in 1:nrow(modelos_finales)){
+  base_entrenamiento <- base_final %>% filter(Modelo_unico == modelos_finales$Modelo_unico[i], Precio > 0, Kilometraje > 0)
+  regresion <- lm(Precio ~ Anio + Kilometraje, base_entrenamiento)
+  lista_regresiones[[i]] <- regresion
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
