@@ -1,1 +1,2 @@
 # Price-Prediction
+This is a project that I did for personal entertainment. The idea was to get the data from a peruvian car selling website and build and application that would allow user to estimate the selling price of their vehicles. In this project I used webscraping to get that data and then with Shiny I built an interactive application. The user interface is in spanish because it was desgined for the peruvian market.
